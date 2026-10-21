@@ -1,42 +1,38 @@
 import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 import asyncio
-import aiohttp
-import logging
+from telegram import Bot
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# --- Servidor web interno para mantener el plan gratuito de Render activo ---
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot activo")
 
-# Tus credenciales de Telegram
-TELEGRAM_BOT_TOKEN = "8928143555:AAFo52VJio4aAYb_3MYP9ps5Jl9S842_4QY"
-TELEGRAM_CHAT_ID = "6043147544"
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
+    server.serve_forever()
 
-async def send_alert(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, json=payload) as response:
-                await response.json()
-        except Exception as e:
-            print(f"Error enviando Telegram: {e}")
+# Inicia el servidor de salud en segundo plano de forma automática
+threading.Thread(target=run_health_check_server, daemon=True).start()
 
-async def analyze_market():
-    print("[*] Bot en la nube iniciado...")
-    await send_alert("☁️ *Bot en la nube conectado y operando 24/7.*")
+# --- Aquí va la lógica principal de tu bot de Telegram y Olymp Trade ---
+async def main():
+    # Token de tu bot y chat ID (asegúrate de tenerlos configurados en las variables de entorno de Render)
+    TOKEN = os.environ.get("TELEGRAM_TOKEN", "TU_TOKEN_AQUI")
+    CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "TU_CHAT_ID_AQUI")
     
+    bot = Bot(token=TOKEN)
+    
+    # Mensaje inicial para confirmar que conectó con éxito
+    await bot.send_message(chat_id=CHAT_ID, text="☁️ Bot en la nube conectado y operando 24/7.")
+    
+    # Bucle principal para mantener el bot corriendo (aquí puedes integrar tu lógica de Olymp Trade ETH_OTC)
     while True:
-        try:
-            # Monitoreo de precio de referencia (puedes cambiar la URL o la API según prefieras)
-            async with aiohttp.ClientSession() as session:
-                async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT") as resp:
-                    data = await resp.json()
-                    price = float(data["price"])
-                    print(f"[Monitoreo en nube] ETH Precio actual: {price}")
-                    
-            await asyncio.sleep(60) # Espera 60 segundos para el siguiente ciclo
-        except Exception as e:
-            print(f"Error en ciclo: {e}")
-            await asyncio.sleep(10)
+        await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    asyncio.run(analyze_market())
+    asyncio.run(main())
