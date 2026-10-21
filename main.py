@@ -55,9 +55,9 @@ async def analizar_mercado():
                 
                 # Definir dirección clara
                 if ultimo_rsi > 70:
-                    direccion = "🔴 VENTA (ABAJO)"
+                    direccion = "VENTA (ABAJO)"
                 elif ultimo_rsi < 30:
-                    direccion = "🟢 COMPRA (ARRIBA)"
+                    direccion = "COMPRA (ARRIBA)"
                 else:
                     direccion = None
                 
@@ -73,8 +73,7 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 **BOT ETH_OTC CONECTADO**\n\nAnalizando mercado cada 1 minuto en busca de entradas inmediatas...",
-        parse_mode="Markdown"
+        text="BOT ETH_CONNECTED: Analizando mercado cada 1 minuto..."
     )
     
     while True:
@@ -83,21 +82,20 @@ async def main():
             
             # Solo envía mensaje cuando haya una señal de entrada clara
             if direccion:
-                # Hora exacta de entrada para la siguiente vela
                 hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
                 
                 mensaje = (
-                    f"🚨 **SEÑAL CONFIRMADA - ETH_OTC**\n\n"
-                    f"📌 **Par:** ETH_OTC\n"
-                    f"⏱ **Tiempo:** 1 MINUTO\n"
-                    f"🎯 **Operación:** {direccion}\n"
-                    f"⏰ **Hora de entrada:** `{hora_entrada}`\n\n"
-                    f"📊 Precio actual: `{precio:.2f}` | RSI: `{rsi:.1f}`"
+                    "SEÑAL CONFIRMADA - ETH_OTC\n\n"
+                    "Par: ETH_OTC\n"
+                    "Tiempo: 1 MINUTO\n"
+                    f"Operacion: {direccion}\n"
+                    f"Hora de entrada: {hora_entrada}\n\n"
+                    f"Precio actual: {precio:.2f} | RSI: {rsi:.1f}"
                 )
-                await bot.send_message(chat_id=CHAT_ID, text=mensaje, parse_mode="Markdown")
+                await bot.send_message(chat_id=CHAT_ID, text=mensaje)
                 
         except Exception as e:
-            print(f"Error en el análisis: {e}")
+            print(f"Error en el analisis: {e}")
             
         await asyncio.sleep(60)
 
