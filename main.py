@@ -1,13 +1,13 @@
 import os
 import asyncio
+import aiohttp
 import pandas as pd
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from telegram import Bot
-from olymptrade_ws import OlympTradeClient  # Conexión basada en la estructura de la API de Olymp Trade
 
-# Servidor web interno para mantener activo el plan gratuito de Render
+# Servidor web interno para Render
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -26,7 +26,7 @@ def run_health_check_server():
 
 threading.Thread(target=run_health_check_server, daemon=True).start()
 
-# Función para calcular el RSI
+# Función para calcular el RSI de 1 minuto
 def calcular_rsi(df, periodo=14):
     delta = df['close'].diff()
     ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
@@ -35,8 +35,41 @@ def calcular_rsi(df, periodo=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
+# Función para obtener datos reales de ETH de 1 minuto
+async def analizar_mercado():
+    url = "https://query1.finance.yahoo.com/v8/finance/chart/ETH-USD?interval=1m&range=1d"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    result = data['chart']['result'][0]
+                    timestamps = result['timestamp']
+                    quotes = result['indicators']['quote'][0]
+                    closes = quotes['close']
+                    
+                    df = pd.DataFrame({'timestamp': timestamps, 'close': closes})
+                    df = df.dropna().reset_index(drop=True)
+                    df['close'] = df['close'].astype(float)
+                    
+                    if len(df) >= 15:
+                        df['rsi'] = calcular_rsi(df, periodo=14)
+                        ultimo_rsi = df['rsi'].iloc[-1]
+                        precio_actual = df['close'].iloc[-1]
+                        
+                        if ultimo_rsi >= 50:
+                            direccion = "🟢 COMPRA (ARRIBA)"
+                        else:
+                            direccion = "🔴 VENTA (ABAJO)"
+                        
+                        return precio_actual, ultimo_rsi, direccion
+        except Exception as e:
+            print(f"Error obteniendo datos: {e}")
+        return None, None, None
+
+# Lógica principal del bot
 async def main():
-    # Credenciales de Telegram
     TOKEN = "8928143555:AAFo52VJio4aAYb_3MYP9ps5Jl9S842_4QY"
     CHAT_ID = "6043147544"
     
@@ -45,39 +78,14 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 BOT OLYMP TRADE / ETH_OTC CONECTADO\nIniciando análisis de velas de 1 minuto..."
+        text="🚀 BOT ETH_OTC CONECTADO\nIniciando señales en tiempo real..."
     )
     
-    # Inicializar cliente de la API (requiere token de acceso si aplica en tu configuración)
-    # Si estás usando entorno local o simulación con token:
-    ACCESS_TOKEN = os.environ.get("OLYMP_TOKEN", "TU_TOKEN_AQUI")
-    client = OlympTradeClient(access_token=ACCESS_TOKEN)
-    
-    try:
-        await client.start()
-        print("Conectado a la API correctamente.")
-    except Exception as e:
-        print(f"Error al iniciar cliente API: {e}")
-
     while True:
         try:
-            # Obtener las últimas velas de 1 minuto (size=60) para ETH (o el par OTC correspondiente)
-            candles = await client.market.get_candles("ETHUSD", size=60, count=30)
+            precio, rsi, direccion = await analizar_mercado()
             
-            if candles and len(candles) >= 15:
-                df = pd.DataFrame(candles)
-                df['close'] = df['close'].astype(float)
-                
-                df['rsi'] = calcular_rsi(df, periodo=14)
-                ultimo_rsi = df['rsi'].iloc[-1]
-                precio_actual = df['close'].iloc[-1]
-                
-                # Estrategia de cruce de RSI (50) para señales de 1 minuto
-                if ultimo_rsi >= 50:
-                    direccion = "🟢 COMPRA (ARRIBA)"
-                else:
-                    direccion = "🔴 VENTA (ABAJO)"
-                
+            if precio and rsi:
                 hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
                 
                 mensaje = (
@@ -86,14 +94,14 @@ async def main():
                     "⏱ Tiempo: 1 MINUTO\n"
                     f"🎯 Operación: {direccion}\n"
                     f"⏰ Hora de entrada: {hora_entrada}\n\n"
-                    f"📊 Precio actual: {precio_actual:.2f} | RSI (1m): {ultimo_rsi:.1f}"
+                    f"📊 Precio actual: {precio:.2f} | RSI (1m): {rsi:.1f}"
                 )
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
             else:
-                print("Esperando suficientes velas del mercado...")
+                print("Esperando datos del mercado...")
                 
         except Exception as e:
-            print(f"Error en el ciclo de señales: {e}")
+            print(f"Error en el ciclo: {e}")
             
         await asyncio.sleep(60)
 
