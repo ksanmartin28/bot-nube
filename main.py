@@ -26,7 +26,7 @@ def run_health_check_server():
 # Inicia el servidor de salud en segundo plano
 threading.Thread(target=run_health_check_server, daemon=True).start()
 
-# Función para calcular el RSI
+# Función para calcular el RSI de 1 minuto
 def calcular_rsi(df, periodo=14):
     delta = df['close'].diff()
     ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
@@ -35,7 +35,7 @@ def calcular_rsi(df, periodo=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Función para obtener datos de Binance (ETH/USDT)
+# Función para obtener datos reales de Binance (ETH/USDT) en tiempo real
 async def analizar_mercado():
     url = "https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=30"
     async with aiohttp.ClientSession() as session:
@@ -49,17 +49,16 @@ async def analizar_mercado():
                 ])
                 df['close'] = df['close'].astype(float)
                 
+                # Cálculo del RSI de 1 minuto
                 df['rsi'] = calcular_rsi(df, periodo=14)
                 ultimo_rsi = df['rsi'].iloc[-1]
                 precio_actual = df['close'].iloc[-1]
                 
-                # Definir dirección clara con emojis
-                if ultimo_rsi > 70:
-                    direccion = "🔴 VENTA (ABAJO)"
-                elif ultimo_rsi < 30:
+                # Estrategia de 1 minuto en tiempo real (Cruce del nivel 50 del RSI)
+                if ultimo_rsi >= 50:
                     direccion = "🟢 COMPRA (ARRIBA)"
                 else:
-                    direccion = None
+                    direccion = "🔴 VENTA (ABAJO)"
                 
                 return precio_actual, ultimo_rsi, direccion
             return None, None, None
@@ -73,15 +72,15 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🤖 BOT ETH_OTC CONECTADO\nAnalizando el mercado cada 1 minuto en busca de entradas..."
+        text="🚀 BOT ETH_OTC ACTIVADO\nEnviando señales reales en tiempo real cada 1 minuto..."
     )
     
     while True:
         try:
             precio, rsi, direccion = await analizar_mercado()
             
-            # Solo envía mensaje cuando haya una señal de entrada clara
-            if direccion:
+            if precio and rsi:
+                # Hora exacta para la siguiente vela de 1 minuto
                 hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
                 
                 mensaje = (
@@ -90,7 +89,7 @@ async def main():
                     "⏱ Tiempo: 1 MINUTO\n"
                     f"🎯 Operación: {direccion}\n"
                     f"⏰ Hora de entrada: {hora_entrada}\n\n"
-                    f"📊 Precio actual: {precio:.2f} | RSI: {rsi:.1f}"
+                    f"📊 Precio actual: {precio:.2f} | RSI (1m): {rsi:.1f}"
                 )
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
                 
