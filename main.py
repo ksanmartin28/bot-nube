@@ -35,32 +35,32 @@ def calcular_rsi(df, periodo=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Función para obtener datos reales de Binance (ETH/USDT) en tiempo real
+# Función para obtener datos reales en tiempo real desde Kraken API (compatible con Render)
 async def analizar_mercado():
-    url = "https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=30"
+    url = "https://api.kraken.com/0/public/OHLC?pair=ETHUSD&interval=1"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             if response.status == 200:
                 data = await response.json()
-                df = pd.DataFrame(data, columns=[
-                    'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                    'close_time', 'quote_asset_volume', 'number_of_trades',
-                    'taker_buy_base', 'taker_buy_quote', 'ignore'
-                ])
-                df['close'] = df['close'].astype(float)
-                
-                # Cálculo del RSI de 1 minuto
-                df['rsi'] = calcular_rsi(df, periodo=14)
-                ultimo_rsi = df['rsi'].iloc[-1]
-                precio_actual = df['close'].iloc[-1]
-                
-                # Estrategia de 1 minuto en tiempo real (Cruce del nivel 50 del RSI)
-                if ultimo_rsi >= 50:
-                    direccion = "🟢 COMPRA (ARRIBA)"
-                else:
-                    direccion = "🔴 VENTA (ABAJO)"
-                
-                return precio_actual, ultimo_rsi, direccion
+                if "result" in data and "ETHUSD" in data["result"]:
+                    candles = data["result"]["ETHUSD"]
+                    df = pd.DataFrame(candles, columns=[
+                        'time', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count'
+                    ])
+                    df['close'] = df['close'].astype(float)
+                    
+                    # Cálculo del RSI de 1 minuto
+                    df['rsi'] = calcular_rsi(df, periodo=14)
+                    ultimo_rsi = df['rsi'].iloc[-1]
+                    precio_actual = df['close'].iloc[-1]
+                    
+                    # Estrategia de 1 minuto en tiempo real
+                    if ultimo_rsi >= 50:
+                        direccion = "🟢 COMPRA (ARRIBA)"
+                    else:
+                        direccion = "🔴 VENTA (ABAJO)"
+                    
+                    return precio_actual, ultimo_rsi, direccion
             return None, None, None
 
 # Lógica principal del bot
@@ -72,7 +72,7 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 BOT ETH_OTC ACTIVADO\nEnviando señales reales en tiempo real cada 1 minuto..."
+        text="🚀 BOT ETH_OTC CONECTADO (KRAKEN)\nEnviando señales reales cada 1 minuto..."
     )
     
     while True:
@@ -80,7 +80,6 @@ async def main():
             precio, rsi, direccion = await analizar_mercado()
             
             if precio and rsi:
-                # Hora exacta para la siguiente vela de 1 minuto
                 hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
                 
                 mensaje = (
@@ -92,9 +91,11 @@ async def main():
                     f"📊 Precio actual: {precio:.2f} | RSI (1m): {rsi:.1f}"
                 )
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
+            else:
+                print("Esperando datos del mercado...")
                 
         except Exception as e:
-            print(f"Error en el análisis: {e}")
+            print(f"Error en el ciclo principal: {e}")
             
         await asyncio.sleep(60)
 
