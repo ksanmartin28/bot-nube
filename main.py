@@ -35,11 +35,13 @@ def calcular_rsi(df, periodo=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Función para obtener datos reales en tiempo real desde Kraken API (compatible con Render)
+# Función para obtener datos reales en tiempo real desde Kraken API
 async def analizar_mercado():
     url = "https://api.kraken.com/0/public/OHLC?pair=ETHUSD&interval=1"
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
+        print("Consultando API de Kraken...")
+        async with session.get(url, timeout=10) as response:
+            print(f"Estado de respuesta Kraken: {response.status}")
             if response.status == 200:
                 data = await response.json()
                 if "result" in data and "ETHUSD" in data["result"]:
@@ -49,12 +51,10 @@ async def analizar_mercado():
                     ])
                     df['close'] = df['close'].astype(float)
                     
-                    # Cálculo del RSI de 1 minuto
                     df['rsi'] = calcular_rsi(df, periodo=14)
                     ultimo_rsi = df['rsi'].iloc[-1]
                     precio_actual = df['close'].iloc[-1]
                     
-                    # Estrategia de 1 minuto en tiempo real
                     if ultimo_rsi >= 50:
                         direccion = "🟢 COMPRA (ARRIBA)"
                     else:
@@ -70,13 +70,16 @@ async def main():
     
     bot = Bot(token=TOKEN)
     
+    print("Enviando mensaje de inicio a Telegram...")
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 BOT ETH_OTC CONECTADO (KRAKEN)\nEnviando señales reales cada 1 minuto..."
+        text="🚀 BOT ETH_OTC REINICIADO (MODO DEBUG)\nIniciando ciclo de señales..."
     )
+    print("Mensaje de inicio enviado con éxito.")
     
     while True:
         try:
+            print("--- Iniciando nuevo ciclo de análisis ---")
             precio, rsi, direccion = await analizar_mercado()
             
             if precio and rsi:
@@ -90,13 +93,16 @@ async def main():
                     f"⏰ Hora de entrada: {hora_entrada}\n\n"
                     f"📊 Precio actual: {precio:.2f} | RSI (1m): {rsi:.1f}"
                 )
+                print("Enviando señal a Telegram...")
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
+                print("¡Señal enviada a Telegram correctamente!")
             else:
-                print("Esperando datos del mercado...")
+                print("Advertencia: No se pudieron procesar los datos del mercado.")
                 
         except Exception as e:
-            print(f"Error en el ciclo principal: {e}")
+            print(f"Ocurrió un error dentro del bucle: {e}")
             
+        print("Esperando 60 segundos para el siguiente ciclo...")
         await asyncio.sleep(60)
 
 if __name__ == "__main__":
