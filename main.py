@@ -53,11 +53,11 @@ async def analizar_mercado():
                 ultimo_rsi = df['rsi'].iloc[-1]
                 precio_actual = df['close'].iloc[-1]
                 
-                # Definir dirección clara
+                # Definir dirección clara con emojis
                 if ultimo_rsi > 70:
-                    direccion = "VENTA (ABAJO)"
+                    direccion = "🔴 VENTA (ABAJO)"
                 elif ultimo_rsi < 30:
-                    direccion = "COMPRA (ARRIBA)"
+                    direccion = "🟢 COMPRA (ARRIBA)"
                 else:
                     direccion = None
                 
@@ -73,7 +73,7 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="BOT ETH_CONNECTED: Analizando mercado cada 1 minuto..."
+        text="🤖 BOT ETH_OTC CONECTADO\nAnalizando el mercado cada 1 minuto en busca de entradas..."
     )
     
     while True:
@@ -85,17 +85,17 @@ async def main():
                 hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
                 
                 mensaje = (
-                    "SEÑAL CONFIRMADA - ETH_OTC\n\n"
-                    "Par: ETH_OTC\n"
-                    "Tiempo: 1 MINUTO\n"
-                    f"Operacion: {direccion}\n"
-                    f"Hora de entrada: {hora_entrada}\n\n"
-                    f"Precio actual: {precio:.2f} | RSI: {rsi:.1f}"
+                    "🚨 SEÑAL CONFIRMADA - ETH_OTC\n\n"
+                    "📌 Par: ETH_OTC\n"
+                    "⏱ Tiempo: 1 MINUTO\n"
+                    f"🎯 Operación: {direccion}\n"
+                    f"⏰ Hora de entrada: {hora_entrada}\n\n"
+                    f"📊 Precio actual: {precio:.2f} | RSI: {rsi:.1f}"
                 )
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
                 
         except Exception as e:
-            print(f"Error en el analisis: {e}")
+            print(f"Error en el análisis: {e}")
             
         await asyncio.sleep(60)
 
