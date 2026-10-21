@@ -69,11 +69,12 @@ async def main():
     CHAT_ID = "6043147544"
     
     bot = Bot(token=TOKEN)
+    await bot.initialize()  # Inicialización obligatoria para la versión actual de la API de Telegram
     
     print("Enviando mensaje de inicio a Telegram...")
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 BOT ETH_OTC REINICIADO (MODO DEBUG)\nIniciando ciclo de señales..."
+        text="🚀 BOT ETH_OTC INICIADO\nEnviando señales cada 1 minuto..."
     )
     print("Mensaje de inicio enviado con éxito.")
     
