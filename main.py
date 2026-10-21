@@ -25,8 +25,8 @@ threading.Thread(target=run_health_check_server, daemon=True).start()
 
 # Lógica principal del bot
 async def main():
-    TOKEN = "7544078701:AAH66pZ_i1Y6wFkUeD7a9Nq8s2L3m4p5v6x"
-    CHAT_ID = "6198083818"
+    TOKEN = "8928143555:AAFo52VJio4aAYb_3MYP9ps5Jl9S842_4QY"
+    CHAT_ID = "6043147544"
     
     bot = Bot(token=TOKEN)
     
