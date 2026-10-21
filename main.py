@@ -7,7 +7,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from telegram import Bot
 
-# Servidor web interno para mantener activo el contenedor en Render
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -26,7 +25,7 @@ def run_health_check_server():
 
 threading.Thread(target=run_health_check_server, daemon=True).start()
 
-# Cálculo matemático exacto del RSI (14 periodos)
+# Cálculo del RSI (14)
 def calcular_rsi(df, periodo=14):
     delta = df['close'].diff()
     ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
@@ -35,7 +34,7 @@ def calcular_rsi(df, periodo=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Análisis de mercado real basado en datos cuantitativos
+# Análisis de mercado real con cruce de EMAs y RSI estricto
 async def analizar_mercado():
     url = "https://query1.finance.yahoo.com/v8/finance/chart/ETH-USD?interval=1m&range=1d"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -55,28 +54,29 @@ async def analizar_mercado():
                     
                     if len(df) >= 20:
                         df['rsi'] = calcular_rsi(df, periodo=14)
+                        # Medias móviles exponenciales rápidas para determinar la tendencia real
+                        df['ema_fast'] = df['close'].ewm(span=3, adjust=False).mean()
+                        df['ema_slow'] = df['close'].ewm(span=8, adjust=False).mean()
+                        
                         ultimo_rsi = df['rsi'].iloc[-1]
                         precio_actual = df['close'].iloc[-1]
-                        precio_anterior = df['close'].iloc[-2]
+                        ema_f = df['ema_fast'].iloc[-1]
+                        ema_s = df['ema_slow'].iloc[-1]
                         
-                        # Análisis técnico real: tendencia de la vela y posición del RSI
-                        tendencia = precio_actual - precio_anterior
-                        
-                        if ultimo_rsi > 58 and tendencia > 0:
+                        # Estrategia profesional: Cruce de EMAs + Confirmación de RSI
+                        if ema_f > ema_s and ultimo_rsi > 48:
                             direccion = "🟢 COMPRA (ARRIBA)"
-                        elif ultimo_rsi < 42 and tendencia < 0:
+                        elif ema_f < ema_s and ultimo_rsi < 52:
                             direccion = "🔴 VENTA (ABAJO)"
-                        elif ultimo_rsi >= 50:
-                            direccion = "🟢 COMPRA (ARRIBA)"
                         else:
-                            direccion = "🔴 VENTA (ABAJO)"
+                            # Si hay indecisión, evaluamos la última vela cerrada con fuerza
+                            direccion = "🟢 COMPRA (ARRIBA)" if precio_actual > df['close'].iloc[-2] else "🔴 VENTA (ABAJO)"
                         
                         return precio_actual, ultimo_rsi, direccion
         except Exception as e:
-            print(f"Error técnico en el análisis: {e}")
+            print(f"Error en análisis técnico: {e}")
         return None, None, None
 
-# Lógica principal del bot con hora local exacta de Perú (UTC-5)
 async def main():
     TOKEN = "8928143555:AAFo52VJio4aAYb_3MYP9ps5Jl9S842_4QY"
     CHAT_ID = "6043147544"
@@ -86,7 +86,7 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="📊 BOT ETH_OTC - ANÁLISIS TÉCNICO REAL\nIniciando monitoreo de RSI y velas de 1 minuto..."
+        text="📊 BOT ETH_OTC - ESTRATEGIA PROFESIONAL ACTIVADA\nAnalizando cruce de tendencias y RSI real..."
     )
     
     while True:
@@ -94,7 +94,6 @@ async def main():
             precio, rsi, direccion = await analizar_mercado()
             
             if precio and rsi:
-                # Sincronización exacta con la hora local de Perú (UTC-5) en formato 12 horas
                 zona_peru = timezone(timedelta(hours=-5))
                 tiempo_local = datetime.now(zona_peru) + timedelta(minutes=1)
                 hora_entrada = tiempo_local.strftime("%I:%M %p")
@@ -109,10 +108,10 @@ async def main():
                 )
                 await bot.send_message(chat_id=CHAT_ID, text=mensaje)
             else:
-                print("Aguardando datos estables del servidor de mercado...")
+                print("Esperando datos estables del mercado...")
                 
         except Exception as e:
-            print(f"Error en el bucle principal: {e}")
+            print(f"Error en el ciclo principal: {e}")
             
         await asyncio.sleep(60)
 
