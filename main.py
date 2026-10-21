@@ -58,10 +58,16 @@ async def analizar_mercado():
                         ultimo_rsi = df['rsi'].iloc[-1]
                         precio_actual = df['close'].iloc[-1]
                         
-                        if ultimo_rsi >= 50:
+                        # Lógica equilibrada para alternar señales de forma realista
+                        # Si el RSI sube de 55 compra, si baja de 45 venta, zonas medias alternan por tendencia de cierre
+                        cambio_precio = df['close'].diff().iloc[-1]
+                        
+                        if ultimo_rsi > 55 or (ultimo_rsi >= 50 and cambio_precio > 0):
                             direccion = "🟢 COMPRA (ARRIBA)"
-                        else:
+                        elif ultimo_rsi < 45 or (ultimo_rsi < 50 and cambio_precio <= 0):
                             direccion = "🔴 VENTA (ABAJO)"
+                        else:
+                            direccion = "🟢 COMPRA (ARRIBA)" if cambio_precio > 0 else "🔴 VENTA (ABAJO)"
                         
                         return precio_actual, ultimo_rsi, direccion
         except Exception as e:
@@ -78,7 +84,7 @@ async def main():
     
     await bot.send_message(
         chat_id=CHAT_ID, 
-        text="🚀 BOT ETH_OTC CONECTADO\nIniciando señales en tiempo real..."
+        text="🚀 BOT ETH_OTC ACTUALIZADO\nSeñales dinámicas y hora en formato 12 horas..."
     )
     
     while True:
@@ -86,7 +92,9 @@ async def main():
             precio, rsi, direccion = await analizar_mercado()
             
             if precio and rsi:
-                hora_entrada = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:00")
+                # Hora de entrada calculada a 1 minuto en formato de 12 horas (Ej: 6:20 PM)
+                tiempo_futuro = datetime.now() + timedelta(minutes=1)
+                hora_entrada = tiempo_futuro.strftime("%I:%M %p")
                 
                 mensaje = (
                     "🚨 SEÑAL CONFIRMADA - ETH_OTC\n\n"
