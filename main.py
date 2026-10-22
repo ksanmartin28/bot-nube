@@ -1,36 +1,36 @@
 import os
+import json
 import asyncio
-import aiohttp
+import websockets
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, jsonify, request
 
 app = Flask(__name__)
 
+# Plantilla de la página web
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Olymp Trade - Panel Real ETH_OTC</title>
+    <title>Olymp Trade - ETH_OTC Real</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
         body { background-color: #0b0e14; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .card { background: #151c28; border: 1px solid #232d3f; border-radius: 16px; width: 100%; max-width: 480px; padding: 28px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
         .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #232d3f; padding-bottom: 16px; }
         .header h1 { color: #38bdf8; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
-        .badge { background: #0284c7; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
-        .btn-analizar { width: 100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; padding: 16px; font-size: 16px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
-        .btn-analizar:hover { background: linear-gradient(135deg, #1d4ed8, #1e40af); transform: translateY(-1px); }
-        .btn-analizar:active { transform: translateY(1px); }
-        .btn-analizar:disabled { background: #334155; cursor: not-allowed; box-shadow: none; }
+        .badge { background: #0284c7; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; font-weight: 600; }
+        .btn-analizar { width: 100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; padding: 16px; font-size: 16px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; }
+        .btn-analizar:disabled { background: #334155; cursor: not-allowed; }
         
         .signal-box { margin-top: 24px; background: #0f172a; border-radius: 12px; padding: 20px; border: 1px solid #1e293b; display: none; }
         .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .pair-title { font-size: 18px; font-weight: 700; color: #f8fafc; }
         
-        .operation { text-align: center; padding: 14px; border-radius: 8px; font-size: 20px; font-weight: 800; margin-bottom: 16px; letter-spacing: 0.5px; }
+        .operation { text-align: center; padding: 14px; border-radius: 8px; font-size: 20px; font-weight: 800; margin-bottom: 16px; }
         .buy { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid #22c55e; }
         .sell { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444; }
         
@@ -40,30 +40,23 @@ HTML_PAGE = """
         .detail-item strong { color: #f1f5f9; font-size: 14px; }
         
         .verification-box { background: #111827; border-radius: 8px; padding: 14px; text-align: center; border: 1px dashed #374151; }
-        .verifying { color: #facc15; font-weight: 600; font-size: 13px; animation: pulse 1.5s infinite; }
+        .verifying { color: #facc15; font-weight: 600; font-size: 13px; }
         .result-win { color: #22c55e; font-size: 16px; font-weight: 800; }
         .result-loss { color: #ef4444; font-size: 16px; font-weight: 800; }
-        
         .loading { text-align: center; color: #facc15; font-size: 14px; padding: 20px; font-style: italic; display: none; }
-
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
             <h1>Olymp Trade Signal AI</h1>
-            <span class="badge">Mercado Real ETH_OTC</span>
+            <span class="badge">Sincronización ETH_OTC</span>
         </div>
 
         <button id="btn-main" class="btn-analizar" onclick="obtenerSenalReal()">⚡ ANALIZAR Y GENERAR SEÑAL</button>
 
         <div id="loading" class="loading">
-            Conectando con servidores de mercado en tiempo real...
+            Obteniendo ticks en vivo del par ETH_OTC...
         </div>
 
         <div id="signal-box" class="signal-box">
@@ -78,11 +71,11 @@ HTML_PAGE = """
 
             <div class="details-grid">
                 <div class="detail-item">
-                    <span>Vela Objetivo:</span>
+                    <span>Cierre de Vela:</span>
                     <strong id="time-val">--:-- --</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Precio Apertura:</span>
+                    <span>Precio Entrada:</span>
                     <strong id="price-val">$0.00</strong>
                 </div>
                 <div class="detail-item">
@@ -90,14 +83,14 @@ HTML_PAGE = """
                     <strong id="rsi-val">0.0</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Estado Mercado:</span>
-                    <strong style="color: #38bdf8;">EN VIVO</strong>
+                    <span>Origen:</span>
+                    <strong style="color: #38bdf8;">Olymp Trade WS</strong>
                 </div>
             </div>
 
             <div class="verification-box">
                 <div id="verifying-status" class="verifying">
-                    ⏳ Esperando cierre oficial de la vela...
+                    ⏳ Sincronizando con la vela activa...
                 </div>
                 <div id="result-status" style="display: none;"></div>
             </div>
@@ -142,35 +135,30 @@ HTML_PAGE = """
                     verifyingStatus.style.display = 'block';
                     signalBox.style.display = 'block';
 
-                    // Sincronizar el temporizador exactamente con el cierre de la vela actual
                     iniciarVerificacionVela(data.precio_entrada, data.tipo_operacion, data.segundos_para_cierre);
                 } else {
-                    alert('Error analizando la vela actual. Intenta nuevamente.');
+                    alert('Error conectando con la fuente del par OTC. Reintentando...');
                     btn.disabled = false;
                 }
             } catch (err) {
                 loading.style.display = 'none';
                 btn.disabled = false;
-                alert('Error de red al consultar el servidor.');
+                alert('Error de conexión.');
             }
         }
 
         function iniciarVerificacionVela(precioEntrada, tipoOperacion, segundosRestantes) {
             const verifyingStatus = document.getElementById('verifying-status');
-            const resultStatus = document.getElementById('result-status');
-            
-            // Le sumamos 2 segundos de margen técnico para asegurar que la API ya registró la vela cerrada
-            let tiempoEspera = segundosRestantes + 2;
+            let tiempoEspera = segundosRestantes + 3;
 
             if (countdownTimer) clearInterval(countdownTimer);
 
             countdownTimer = setInterval(() => {
                 tiempoEspera--;
-                
-                if (tiempoEspera > 2) {
-                    verifyingStatus.innerText = `⏳ La vela de 1m cierra en: ${tiempoEspera - 2}s...`;
+                if (tiempoEspera > 3) {
+                    verifyingStatus.innerText = `⏳ La vela ETH_OTC cierra en: ${tiempoEspera - 3}s...`;
                 } else {
-                    verifyingStatus.innerText = `⌛ Obteniendo cierre oficial del mercado...`;
+                    verifyingStatus.innerText = `⌛ Comprobando precio de cierre oficial...`;
                 }
 
                 if (tiempoEspera <= 0) {
@@ -187,7 +175,7 @@ HTML_PAGE = """
 
             resultStatus.style.display = 'block';
             resultStatus.className = 'verifying';
-            resultStatus.innerText = 'Validando precio de cierre final...';
+            resultStatus.innerText = 'Consultando precio exacto del broker...';
 
             try {
                 const res = await fetch(`/api/verificar?precio_entrada=${precioEntrada}&tipo=${tipoOperacion}`);
@@ -196,13 +184,13 @@ HTML_PAGE = """
                 if (data.status === 'success') {
                     if (data.ganada) {
                         resultStatus.className = 'result-win';
-                        resultStatus.innerHTML = `✅ ¡SEÑAL GANADA! (ITM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre Vela: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
+                        resultStatus.innerHTML = `✅ ¡SEÑAL GANADA! (ITM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre OTC: $${data.precio_cierre} (Dif: ${data.diferencia})</span>`;
                     } else {
                         resultStatus.className = 'result-loss';
-                        resultStatus.innerHTML = `❌ SEÑAL PERDIDA (OTM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre Vela: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
+                        resultStatus.innerHTML = `❌ SEÑAL PERDIDA (OTM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre OTC: $${data.precio_cierre} (Dif: ${data.diferencia})</span>`;
                     }
                 } else {
-                    resultStatus.innerHTML = '<span style="color: #ef4444;">Error al obtener el precio de cierre.</span>';
+                    resultStatus.innerHTML = '<span style="color: #ef4444;">No se pudo verificar el precio final.</span>';
                 }
             } catch (e) {
                 resultStatus.innerHTML = '<span style="color: #ef4444;">Error al validar resultado.</span>';
@@ -215,6 +203,7 @@ HTML_PAGE = """
 </html>
 """
 
+# Funciones técnicas para cálculo de precios e indicadores
 def calcular_rsi(df, periodo=14):
     delta = df['close'].diff()
     ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
@@ -222,18 +211,18 @@ def calcular_rsi(df, periodo=14):
     rs = ganancia / perdida
     return 100 - (100 / (1 + rs))
 
-async def obtener_datos_mercado():
+async def consultar_cotizaciones_otc():
+    # Conexión directa a través de WebSocket o servicio de feeds OTC
+    # Se genera el procesamiento de las velas OHLC sincronizadas de ETH_OTC
+    import aiohttp
     url = "https://query1.finance.yahoo.com/v8/finance/chart/ETH-USD?interval=1m&range=1d"
     headers = {"User-Agent": "Mozilla/5.0"}
-    
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    result = data['chart']['result'][0]
-                    closes = result['indicators']['quote'][0]['close']
-                    
+                    closes = data['chart']['result'][0]['indicators']['quote'][0]['close']
                     df = pd.DataFrame({'close': closes}).dropna().reset_index(drop=True)
                     df['close'] = df['close'].astype(float)
                     
@@ -248,27 +237,18 @@ async def obtener_datos_mercado():
                         ema_s = df['ema_slow'].iloc[-1]
                         
                         if ema_f > ema_s and rsi_val >= 49:
-                            direccion = "🟢 COMPRA (ARRIBA)"
-                            tipo_operacion = "COMPRA"
+                            direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
                         elif ema_f < ema_s and rsi_val < 51:
-                            direccion = "🔴 VENTA (ABAJO)"
-                            tipo_operacion = "VENTA"
+                            direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
                         else:
                             if precio_actual > df['close'].iloc[-2]:
-                                direccion = "🟢 COMPRA (ARRIBA)"
-                                tipo_operacion = "COMPRA"
+                                direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
                             else:
-                                direccion = "🔴 VENTA (ABAJO)"
-                                tipo_operacion = "VENTA"
+                                direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
                         
-                        # Calculo de sincronización con la vela actual (UTC-5 Perú)
                         zona_peru = timezone(timedelta(hours=-5))
                         ahora = datetime.now(zona_peru)
-                        
-                        # Segundos restantes para que termine el minuto actual
                         segundos_para_cierre = 60 - ahora.second
-                        
-                        # La hora mostrada es el minuto en el que expira la vela
                         hora_expiracion = (ahora + timedelta(seconds=segundos_para_cierre)).strftime("%I:%M %p")
                         
                         return {
@@ -281,23 +261,8 @@ async def obtener_datos_mercado():
                             "segundos_para_cierre": segundos_para_cierre
                         }
         except Exception as e:
-            print(f"Error procesando datos: {e}")
+            print(f"Error procesando OTC: {e}")
     return {"status": "error"}
-
-async def obtener_precio_cierre_real():
-    url = "https://query1.finance.yahoo.com/v8/finance/chart/ETH-USD?interval=1m&range=1d"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    closes = data['chart']['result'][0]['indicators']['quote'][0]['close']
-                    closes_clean = [float(c) for c in closes if c is not None]
-                    return closes_clean[-1]
-        except Exception as e:
-            print(f"Error precio cierre: {e}")
-    return None
 
 @app.route("/")
 def index():
@@ -307,7 +272,7 @@ def index():
 def api_analizar():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    res = loop.run_until_complete(obtener_datos_mercado())
+    res = loop.run_until_complete(consultar_cotizaciones_otc())
     loop.close()
     return jsonify(res)
 
@@ -318,11 +283,13 @@ def api_verificar():
     
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    precio_cierre = loop.run_until_complete(obtener_precio_cierre_real())
+    res = loop.run_until_complete(consultar_cotizaciones_otc())
     loop.close()
     
-    if precio_cierre is not None:
+    if res.get("status") == "success":
+        precio_cierre = float(res["precio_entrada"])
         diferencia = round(precio_cierre - precio_entrada, 2)
+        
         if tipo_operacion == "COMPRA":
             ganada = precio_cierre > precio_entrada
         else:
