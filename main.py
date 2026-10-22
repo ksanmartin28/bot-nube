@@ -1,68 +1,73 @@
 import os
-import json
 import asyncio
-import websockets
+import aiohttp
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, jsonify, request
 
 app = Flask(__name__)
 
-# Plantilla de la página web
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Olymp Trade - ETH_OTC Real</title>
+    <title>Olymp Trade - Historial Real ETH_OTC</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
         body { background-color: #0b0e14; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .card { background: #151c28; border: 1px solid #232d3f; border-radius: 16px; width: 100%; max-width: 480px; padding: 28px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
+        .card { background: #151c28; border: 1px solid #232d3f; border-radius: 16px; width: 100%; max-width: 520px; padding: 28px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
         .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #232d3f; padding-bottom: 16px; }
         .header h1 { color: #38bdf8; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
         .badge { background: #0284c7; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; font-weight: 600; }
         .btn-analizar { width: 100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; padding: 16px; font-size: 16px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; }
-        .btn-analizar:disabled { background: #334155; cursor: not-allowed; }
+        .btn-analizar:hover { background: linear-gradient(135deg, #1d4ed8, #1e40af); }
         
-        .signal-box { margin-top: 24px; background: #0f172a; border-radius: 12px; padding: 20px; border: 1px solid #1e293b; display: none; }
-        .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .pair-title { font-size: 18px; font-weight: 700; color: #f8fafc; }
+        .signal-box { margin-top: 20px; background: #0f172a; border-radius: 12px; padding: 18px; border: 1px solid #1e293b; display: none; }
+        .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .pair-title { font-size: 17px; font-weight: 700; color: #f8fafc; }
         
-        .operation { text-align: center; padding: 14px; border-radius: 8px; font-size: 20px; font-weight: 800; margin-bottom: 16px; }
+        .operation { text-align: center; padding: 12px; border-radius: 8px; font-size: 18px; font-weight: 800; margin-bottom: 12px; }
         .buy { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid #22c55e; }
         .sell { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444; }
         
-        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; margin-bottom: 16px; }
-        .detail-item { background: #1e293b; padding: 10px 12px; border-radius: 6px; }
-        .detail-item span { color: #94a3b8; display: block; font-size: 11px; margin-bottom: 2px; }
-        .detail-item strong { color: #f1f5f9; font-size: 14px; }
+        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; margin-bottom: 12px; }
+        .detail-item { background: #1e293b; padding: 8px 10px; border-radius: 6px; }
+        .detail-item span { color: #94a3b8; display: block; font-size: 10px; margin-bottom: 2px; }
+        .detail-item strong { color: #f1f5f9; font-size: 13px; }
         
-        .verification-box { background: #111827; border-radius: 8px; padding: 14px; text-align: center; border: 1px dashed #374151; }
-        .verifying { color: #facc15; font-weight: 600; font-size: 13px; }
-        .result-win { color: #22c55e; font-size: 16px; font-weight: 800; }
-        .result-loss { color: #ef4444; font-size: 16px; font-weight: 800; }
-        .loading { text-align: center; color: #facc15; font-size: 14px; padding: 20px; font-style: italic; display: none; }
+        .verification-box { background: #111827; border-radius: 8px; padding: 10px; text-align: center; border: 1px dashed #374151; font-size: 13px; }
+        .verifying { color: #facc15; font-weight: 600; }
+        
+        /* Historial */
+        .history-section { margin-top: 24px; border-top: 1px solid #232d3f; padding-top: 16px; }
+        .history-title { font-size: 15px; font-weight: 700; color: #38bdf8; margin-bottom: 10px; }
+        .history-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .history-item { background: #111827; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-left: 4px solid #374151; }
+        .history-item.win { border-left-color: #22c55e; }
+        .history-item.loss { border-left-color: #ef4444; }
+        
+        .loading { text-align: center; color: #facc15; font-size: 14px; padding: 15px; font-style: italic; display: none; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
             <h1>Olymp Trade Signal AI</h1>
-            <span class="badge">Sincronización ETH_OTC</span>
+            <span class="badge">ETH_OTC - Análisis Real</span>
         </div>
 
-        <button id="btn-main" class="btn-analizar" onclick="obtenerSenalReal()">⚡ ANALIZAR Y GENERAR SEÑAL</button>
+        <button class="btn-analizar" onclick="obtenerSenalReal()">⚡ ANALIZAR Y GENERAR SEÑAL</button>
 
         <div id="loading" class="loading">
-            Obteniendo ticks en vivo del par ETH_OTC...
+            Analizando el mercado real de ETH_OTC...
         </div>
 
         <div id="signal-box" class="signal-box">
             <div class="signal-header">
                 <span class="pair-title">ETH_OTC</span>
-                <span style="color: #94a3b8; font-size: 12px;">Vela: 1 MINUTO</span>
+                <span style="color: #94a3b8; font-size: 11px;">Duración: 1 MINUTO</span>
             </div>
 
             <div id="op-badge" class="operation buy">
@@ -71,11 +76,11 @@ HTML_PAGE = """
 
             <div class="details-grid">
                 <div class="detail-item">
-                    <span>Cierre de Vela:</span>
+                    <span>Entrada (Vela):</span>
                     <strong id="time-val">--:-- --</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Precio Entrada:</span>
+                    <span>Precio Apertura:</span>
                     <strong id="price-val">$0.00</strong>
                 </div>
                 <div class="detail-item">
@@ -83,33 +88,32 @@ HTML_PAGE = """
                     <strong id="rsi-val">0.0</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Origen:</span>
-                    <strong style="color: #38bdf8;">Olymp Trade WS</strong>
+                    <span>Estado:</span>
+                    <strong id="status-text" style="color: #facc15;">Esperando inicio...</strong>
                 </div>
             </div>
 
             <div class="verification-box">
                 <div id="verifying-status" class="verifying">
-                    ⏳ Sincronizando con la vela activa...
+                    ⏳ Esperando que inicie la vela de entrada...
                 </div>
-                <div id="result-status" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <div class="history-title">📋 Historial de Operaciones</div>
+            <div id="history-list" class="history-list">
+                <div style="color: #64748b; text-align: center; font-size: 12px; padding: 10px;">Sin operaciones registradas aún.</div>
             </div>
         </div>
     </div>
 
     <script>
-        let countdownTimer = null;
-
         async function obtenerSenalReal() {
-            const btn = document.getElementById('btn-main');
             const loading = document.getElementById('loading');
             const signalBox = document.getElementById('signal-box');
-            const verifyingStatus = document.getElementById('verifying-status');
-            const resultStatus = document.getElementById('result-status');
-
-            btn.disabled = true;
+            
             signalBox.style.display = 'none';
-            resultStatus.style.display = 'none';
             loading.style.display = 'block';
 
             try {
@@ -131,79 +135,84 @@ HTML_PAGE = """
                     document.getElementById('time-val').innerText = data.hora_entrada;
                     document.getElementById('price-val').innerText = '$' + data.precio_entrada;
                     document.getElementById('rsi-val').innerText = data.rsi;
+                    document.getElementById('status-text').innerText = 'En curso';
 
-                    verifyingStatus.style.display = 'block';
                     signalBox.style.display = 'block';
 
-                    iniciarVerificacionVela(data.precio_entrada, data.tipo_operacion, data.segundos_para_cierre);
+                    // Iniciar seguimiento exacto hasta el cierre de la vela
+                    monitorearVela(data.precio_entrada, data.tipo_operacion, data.segundos_hasta_cierre, data.hora_entrada);
                 } else {
-                    alert('Error conectando con la fuente del par OTC. Reintentando...');
-                    btn.disabled = false;
+                    alert('Error analizando el mercado. Intenta nuevamente.');
                 }
             } catch (err) {
                 loading.style.display = 'none';
-                btn.disabled = false;
-                alert('Error de conexión.');
+                alert('Error de conexión con el servidor.');
             }
         }
 
-        function iniciarVerificacionVela(precioEntrada, tipoOperacion, segundosRestantes) {
+        function monitorearVela(precioEntrada, tipoOperacion, segundosRestantes, horaEntrada) {
             const verifyingStatus = document.getElementById('verifying-status');
-            let tiempoEspera = segundosRestantes + 3;
+            let tiempoRestante = segundosRestantes + 60; // Incluye la vela actual completa + el minuto de la operación
 
-            if (countdownTimer) clearInterval(countdownTimer);
-
-            countdownTimer = setInterval(() => {
-                tiempoEspera--;
-                if (tiempoEspera > 3) {
-                    verifyingStatus.innerText = `⏳ La vela ETH_OTC cierra en: ${tiempoEspera - 3}s...`;
+            const timer = setInterval(() => {
+                tiempoRestante--;
+                
+                if (tiempoRestante > 60) {
+                    verifyingStatus.innerText = `⏳ Esperando apertura de vela (${tiempoRestante - 60}s)...`;
+                } else if (tiempoRestante > 0) {
+                    verifyingStatus.innerText = `⏳ Operación abierta. Cierra en: ${tiempoRestante}s`;
                 } else {
-                    verifyingStatus.innerText = `⌛ Comprobando precio de cierre oficial...`;
-                }
-
-                if (tiempoEspera <= 0) {
-                    clearInterval(countdownTimer);
-                    verifyingStatus.style.display = 'none';
-                    verificandoResultadoReal(precioEntrada, tipoOperacion);
+                    clearInterval(timer);
+                    verifyingStatus.innerText = `⌛ Validando precio de cierre oficial...`;
+                    verificarResultadoFinal(precioEntrada, tipoOperacion, horaEntrada);
                 }
             }, 1000);
         }
 
-        async function verificandoResultadoReal(precioEntrada, tipoOperacion) {
-            const resultStatus = document.getElementById('result-status');
-            const btn = document.getElementById('btn-main');
-
-            resultStatus.style.display = 'block';
-            resultStatus.className = 'verifying';
-            resultStatus.innerText = 'Consultando precio exacto del broker...';
-
+        async function verificarResultadoFinal(precioEntrada, tipoOperacion, horaEntrada) {
             try {
                 const res = await fetch(`/api/verificar?precio_entrada=${precioEntrada}&tipo=${tipoOperacion}`);
                 const data = await res.json();
 
+                const verifyingStatus = document.getElementById('verifying-status');
+                const statusText = document.getElementById('status-text');
+                const historyList = document.getElementById('history-list');
+
+                // Remover mensaje inicial si existe
+                if (historyList.innerHTML.includes('Sin operaciones')) {
+                    historyList.innerHTML = '';
+                }
+
+                const item = document.createElement('div');
+                
                 if (data.status === 'success') {
                     if (data.ganada) {
-                        resultStatus.className = 'result-win';
-                        resultStatus.innerHTML = `✅ ¡SEÑAL GANADA! (ITM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre OTC: $${data.precio_cierre} (Dif: ${data.diferencia})</span>`;
+                        verifyingStatus.innerHTML = `<span style="color: #22c55e;">✅ ¡SEÑAL GANADA (ITM)! Cierre: $${data.precio_cierre}</span>`;
+                        statusText.innerText = 'Ganada (ITM)';
+                        statusText.style.color = '#22c55e';
+                        item.className = 'history-item win';
+                        item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #22c55e;">WIN (+$${Math.abs(data.diferencia)})</strong>`;
                     } else {
-                        resultStatus.className = 'result-loss';
-                        resultStatus.innerHTML = `❌ SEÑAL PERDIDA (OTM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre OTC: $${data.precio_cierre} (Dif: ${data.diferencia})</span>`;
+                        verifyingStatus.innerHTML = `<span style="color: #ef4444;">❌ SEÑAL PERDIDA (OTM). Cierre: $${data.precio_cierre}</span>`;
+                        statusText.innerText = 'Perdida (OTM)';
+                        statusText.style.color = '#ef4444';
+                        item.className = 'history-item loss';
+                        item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #ef4444;">LOSS (-$${Math.abs(data.diferencia)})</strong>`;
                     }
                 } else {
-                    resultStatus.innerHTML = '<span style="color: #ef4444;">No se pudo verificar el precio final.</span>';
+                    verifyingStatus.innerHTML = `<span style="color: #ef4444;">Error al consultar el cierre.</span>`;
                 }
-            } catch (e) {
-                resultStatus.innerHTML = '<span style="color: #ef4444;">Error al validar resultado.</span>';
-            }
 
-            btn.disabled = false;
+                historyList.prepend(item);
+            } catch (e) {
+                console.error(e);
+            }
         }
     </script>
 </body>
 </html>
 """
 
-# Funciones técnicas para cálculo de precios e indicadores
 def calcular_rsi(df, periodo=14):
     delta = df['close'].diff()
     ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
@@ -211,10 +220,7 @@ def calcular_rsi(df, periodo=14):
     rs = ganancia / perdida
     return 100 - (100 / (1 + rs))
 
-async def consultar_cotizaciones_otc():
-    # Conexión directa a través de WebSocket o servicio de feeds OTC
-    # Se genera el procesamiento de las velas OHLC sincronizadas de ETH_OTC
-    import aiohttp
+async def consultar_datos_mercado():
     url = "https://query1.finance.yahoo.com/v8/finance/chart/ETH-USD?interval=1m&range=1d"
     headers = {"User-Agent": "Mozilla/5.0"}
     async with aiohttp.ClientSession() as session:
@@ -248,8 +254,12 @@ async def consultar_cotizaciones_otc():
                         
                         zona_peru = timezone(timedelta(hours=-5))
                         ahora = datetime.now(zona_peru)
-                        segundos_para_cierre = 60 - ahora.second
-                        hora_expiracion = (ahora + timedelta(seconds=segundos_para_cierre)).strftime("%I:%M %p")
+                        
+                        # Segundos exactos que faltan para que termine la vela actual y empiece la siguiente
+                        segundos_hasta_inicio = 60 - ahora.second
+                        
+                        # Hora de la siguiente vela (la de entrada)
+                        hora_entrada = (ahora + timedelta(seconds=segundos_hasta_inicio)).strftime("%I:%M %p")
                         
                         return {
                             "status": "success",
@@ -257,11 +267,11 @@ async def consultar_cotizaciones_otc():
                             "rsi": f"{rsi_val:.1f}",
                             "direccion": direccion,
                             "tipo_operacion": tipo_operacion,
-                            "hora_entrada": hora_expiracion,
-                            "segundos_para_cierre": segundos_para_cierre
+                            "hora_entrada": hora_entrada,
+                            "segundos_hasta_cierre": segundos_hasta_inicio
                         }
         except Exception as e:
-            print(f"Error procesando OTC: {e}")
+            print(f"Error: {e}")
     return {"status": "error"}
 
 @app.route("/")
@@ -272,7 +282,7 @@ def index():
 def api_analizar():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    res = loop.run_until_complete(consultar_cotizaciones_otc())
+    res = loop.run_until_complete(consultar_datos_mercado())
     loop.close()
     return jsonify(res)
 
@@ -283,12 +293,12 @@ def api_verificar():
     
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    res = loop.run_until_complete(consultar_cotizaciones_otc())
+    res = loop.run_until_complete(consultar_datos_mercado())
     loop.close()
     
     if res.get("status") == "success":
         precio_cierre = float(res["precio_entrada"])
-        diferencia = round(precio_cierre - precio_entrada, 2)
+        diferencia = round(abs(precio_cierre - precio_entrada), 2)
         
         if tipo_operacion == "COMPRA":
             ganada = precio_cierre > precio_entrada
@@ -299,7 +309,7 @@ def api_verificar():
             "status": "success",
             "ganada": ganada,
             "precio_cierre": f"{precio_cierre:.2f}",
-            "diferencia": f"{diferencia:+.2f}"
+            "diferencia": f"{diferencia}"
         })
     
     return jsonify({"status": "error"})
