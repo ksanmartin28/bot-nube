@@ -7,7 +7,6 @@ from flask import Flask, render_template_string, jsonify, request
 
 app = Flask(__name__)
 
-# Plantilla HTML/JS responsiva y moderna en modo oscuro
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="es">
@@ -40,7 +39,6 @@ HTML_PAGE = """
         .detail-item span { color: #94a3b8; display: block; font-size: 11px; margin-bottom: 2px; }
         .detail-item strong { color: #f1f5f9; font-size: 14px; }
         
-        /* Caja de Verificación de Resultado */
         .verification-box { background: #111827; border-radius: 8px; padding: 14px; text-align: center; border: 1px dashed #374151; }
         .verifying { color: #facc15; font-weight: 600; font-size: 13px; animation: pulse 1.5s infinite; }
         .result-win { color: #22c55e; font-size: 16px; font-weight: 800; }
@@ -65,13 +63,13 @@ HTML_PAGE = """
         <button id="btn-main" class="btn-analizar" onclick="obtenerSenalReal()">⚡ ANALIZAR Y GENERAR SEÑAL</button>
 
         <div id="loading" class="loading">
-            Conectando con servidores y analizando RSI/EMAs en tiempo real...
+            Conectando con servidores de mercado en tiempo real...
         </div>
 
         <div id="signal-box" class="signal-box">
             <div class="signal-header">
                 <span class="pair-title">ETH_OTC</span>
-                <span style="color: #94a3b8; font-size: 12px;">Tiempo: 1 MIN</span>
+                <span style="color: #94a3b8; font-size: 12px;">Vela: 1 MINUTO</span>
             </div>
 
             <div id="op-badge" class="operation buy">
@@ -80,11 +78,11 @@ HTML_PAGE = """
 
             <div class="details-grid">
                 <div class="detail-item">
-                    <span>Hora de Entrada:</span>
+                    <span>Vela Objetivo:</span>
                     <strong id="time-val">--:-- --</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Precio de Entrada:</span>
+                    <span>Precio Apertura:</span>
                     <strong id="price-val">$0.00</strong>
                 </div>
                 <div class="detail-item">
@@ -92,14 +90,14 @@ HTML_PAGE = """
                     <strong id="rsi-val">0.0</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Fuente:</span>
-                    <strong style="color: #38bdf8;">Mercado Real EN VIVO</strong>
+                    <span>Estado Mercado:</span>
+                    <strong style="color: #38bdf8;">EN VIVO</strong>
                 </div>
             </div>
 
             <div class="verification-box">
                 <div id="verifying-status" class="verifying">
-                    ⏳ Esperando fin de vela (60s) para verificar resultado real...
+                    ⏳ Esperando cierre oficial de la vela...
                 </div>
                 <div id="result-status" style="display: none;"></div>
             </div>
@@ -144,10 +142,10 @@ HTML_PAGE = """
                     verifyingStatus.style.display = 'block';
                     signalBox.style.display = 'block';
 
-                    // Iniciar cuenta regresiva para verificar el resultado exacto tras 60 segundos
-                    iniciarVerificacion(data.precio_entrada, data.tipo_operacion);
+                    // Sincronizar el temporizador exactamente con el cierre de la vela actual
+                    iniciarVerificacionVela(data.precio_entrada, data.tipo_operacion, data.segundos_para_cierre);
                 } else {
-                    alert('Error extrayendo cotizaciones. Intenta nuevamente.');
+                    alert('Error analizando la vela actual. Intenta nuevamente.');
                     btn.disabled = false;
                 }
             } catch (err) {
@@ -157,19 +155,25 @@ HTML_PAGE = """
             }
         }
 
-        function iniciarVerificacion(precioEntrada, tipoOperacion) {
-            let segundosRestantes = 60;
+        function iniciarVerificacionVela(precioEntrada, tipoOperacion, segundosRestantes) {
             const verifyingStatus = document.getElementById('verifying-status');
             const resultStatus = document.getElementById('result-status');
-            const btn = document.getElementById('btn-main');
+            
+            // Le sumamos 2 segundos de margen técnico para asegurar que la API ya registró la vela cerrada
+            let tiempoEspera = segundosRestantes + 2;
 
             if (countdownTimer) clearInterval(countdownTimer);
 
             countdownTimer = setInterval(() => {
-                segundosRestantes--;
-                verifyingStatus.innerText = `⏳ Verificando resultado real en: ${segundosRestantes}s...`;
+                tiempoEspera--;
+                
+                if (tiempoEspera > 2) {
+                    verifyingStatus.innerText = `⏳ La vela de 1m cierra en: ${tiempoEspera - 2}s...`;
+                } else {
+                    verifyingStatus.innerText = `⌛ Obteniendo cierre oficial del mercado...`;
+                }
 
-                if (segundosRestantes <= 0) {
+                if (tiempoEspera <= 0) {
                     clearInterval(countdownTimer);
                     verifyingStatus.style.display = 'none';
                     verificandoResultadoReal(precioEntrada, tipoOperacion);
@@ -183,7 +187,7 @@ HTML_PAGE = """
 
             resultStatus.style.display = 'block';
             resultStatus.className = 'verifying';
-            resultStatus.innerText = 'Obteniendo precio de cierre real...';
+            resultStatus.innerText = 'Validando precio de cierre final...';
 
             try {
                 const res = await fetch(`/api/verificar?precio_entrada=${precioEntrada}&tipo=${tipoOperacion}`);
@@ -192,10 +196,10 @@ HTML_PAGE = """
                 if (data.status === 'success') {
                     if (data.ganada) {
                         resultStatus.className = 'result-win';
-                        resultStatus.innerHTML = `✅ ¡SEÑAL GANADA! (ITM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
+                        resultStatus.innerHTML = `✅ ¡SEÑAL GANADA! (ITM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre Vela: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
                     } else {
                         resultStatus.className = 'result-loss';
-                        resultStatus.innerHTML = `❌ SEÑAL PERDIDA (OTM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
+                        resultStatus.innerHTML = `❌ SEÑAL PERDIDA (OTM)<br><span style="font-size: 12px; color: #94a3b8;">Precio Cierre Vela: $${data.precio_cierre} (Diferencia: ${data.diferencia})</span>`;
                     }
                 } else {
                     resultStatus.innerHTML = '<span style="color: #ef4444;">Error al obtener el precio de cierre.</span>';
@@ -257,8 +261,15 @@ async def obtener_datos_mercado():
                                 direccion = "🔴 VENTA (ABAJO)"
                                 tipo_operacion = "VENTA"
                         
+                        # Calculo de sincronización con la vela actual (UTC-5 Perú)
                         zona_peru = timezone(timedelta(hours=-5))
-                        hora_entrada = (datetime.now(zona_peru) + timedelta(minutes=1)).strftime("%I:%M %p")
+                        ahora = datetime.now(zona_peru)
+                        
+                        # Segundos restantes para que termine el minuto actual
+                        segundos_para_cierre = 60 - ahora.second
+                        
+                        # La hora mostrada es el minuto en el que expira la vela
+                        hora_expiracion = (ahora + timedelta(seconds=segundos_para_cierre)).strftime("%I:%M %p")
                         
                         return {
                             "status": "success",
@@ -266,7 +277,8 @@ async def obtener_datos_mercado():
                             "rsi": f"{rsi_val:.1f}",
                             "direccion": direccion,
                             "tipo_operacion": tipo_operacion,
-                            "hora_entrada": hora_entrada
+                            "hora_entrada": hora_expiracion,
+                            "segundos_para_cierre": segundos_para_cierre
                         }
         except Exception as e:
             print(f"Error procesando datos: {e}")
