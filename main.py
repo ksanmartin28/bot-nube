@@ -13,7 +13,7 @@ HTML_PAGE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Olymp Trade - Historial Real ETH_OTC</title>
+    <title>Olymp Trade - Panel Real ETH_OTC</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
         body { background-color: #0b0e14; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -21,16 +21,15 @@ HTML_PAGE = """
         .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #232d3f; padding-bottom: 16px; }
         .header h1 { color: #38bdf8; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
         .badge { background: #0284c7; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; font-weight: 600; }
-        .btn-analizar { width: 100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; padding: 16px; font-size: 16px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; }
-        .btn-analizar:hover { background: linear-gradient(135deg, #1d4ed8, #1e40af); }
         
-        .signal-box { margin-top: 20px; background: #0f172a; border-radius: 12px; padding: 18px; border: 1px solid #1e293b; display: none; }
+        .signal-box { margin-top: 15px; background: #0f172a; border-radius: 12px; padding: 18px; border: 1px solid #1e293b; }
         .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .pair-title { font-size: 17px; font-weight: 700; color: #f8fafc; }
         
         .operation { text-align: center; padding: 12px; border-radius: 8px; font-size: 18px; font-weight: 800; margin-bottom: 12px; }
         .buy { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid #22c55e; }
         .sell { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444; }
+        .neutral { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid #475569; }
         
         .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; margin-bottom: 12px; }
         .detail-item { background: #1e293b; padding: 8px 10px; border-radius: 6px; }
@@ -40,47 +39,38 @@ HTML_PAGE = """
         .verification-box { background: #111827; border-radius: 8px; padding: 10px; text-align: center; border: 1px dashed #374151; font-size: 13px; }
         .verifying { color: #facc15; font-weight: 600; }
         
-        /* Historial */
         .history-section { margin-top: 24px; border-top: 1px solid #232d3f; padding-top: 16px; }
         .history-title { font-size: 15px; font-weight: 700; color: #38bdf8; margin-bottom: 10px; }
         .history-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
         .history-item { background: #111827; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-left: 4px solid #374151; }
         .history-item.win { border-left-color: #22c55e; }
         .history-item.loss { border-left-color: #ef4444; }
-        
-        .loading { text-align: center; color: #facc15; font-size: 14px; padding: 15px; font-style: italic; display: none; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
             <h1>Olymp Trade Signal AI</h1>
-            <span class="badge">ETH_OTC - Análisis Real</span>
+            <span class="badge">ETH_OTC - Sincronización en Vivo</span>
         </div>
 
-        <button class="btn-analizar" onclick="obtenerSenalReal()">⚡ ANALIZAR Y GENERAR SEÑAL</button>
-
-        <div id="loading" class="loading">
-            Analizando el mercado real de ETH_OTC...
-        </div>
-
-        <div id="signal-box" class="signal-box">
+        <div class="signal-box">
             <div class="signal-header">
                 <span class="pair-title">ETH_OTC</span>
-                <span style="color: #94a3b8; font-size: 11px;">Duración: 1 MINUTO</span>
+                <span style="color: #94a3b8; font-size: 11px;">Vela: 1 MINUTO</span>
             </div>
 
-            <div id="op-badge" class="operation buy">
-                🟢 COMPRA (ARRIBA)
+            <div id="op-badge" class="operation neutral">
+                ANALIZANDO MERCADO...
             </div>
 
             <div class="details-grid">
                 <div class="detail-item">
-                    <span>Entrada (Vela):</span>
+                    <span>Vela Activa:</span>
                     <strong id="time-val">--:-- --</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Precio Apertura:</span>
+                    <span>Precio Actual:</span>
                     <strong id="price-val">$0.00</strong>
                 </div>
                 <div class="detail-item">
@@ -89,41 +79,61 @@ HTML_PAGE = """
                 </div>
                 <div class="detail-item">
                     <span>Estado:</span>
-                    <strong id="status-text" style="color: #facc15;">Esperando inicio...</strong>
+                    <strong id="status-text" style="color: #facc15;">Sincronizando</strong>
                 </div>
             </div>
 
             <div class="verification-box">
                 <div id="verifying-status" class="verifying">
-                    ⏳ Esperando que inicie la vela de entrada...
+                    ⏳ Conectando con el flujo de velas en vivo...
                 </div>
             </div>
         </div>
 
         <div class="history-section">
-            <div class="history-title">📋 Historial de Operaciones</div>
+            <div class="history-title">📋 Historial Automático de Operaciones</div>
             <div id="history-list" class="history-list">
-                <div style="color: #64748b; text-align: center; font-size: 12px; padding: 10px;">Sin operaciones registradas aún.</div>
+                <div style="color: #64748b; text-align: center; font-size: 12px; padding: 10px;">Esperando el cierre de la primera vela...</div>
             </div>
         </div>
     </div>
 
     <script>
-        async function obtenerSenalReal() {
-            const loading = document.getElementById('loading');
-            const signalBox = document.getElementById('signal-box');
-            
-            signalBox.style.display = 'none';
-            loading.style.display = 'block';
+        let ultimaVelaRegistrada = null;
+        let operacionActiva = null;
 
+        async function cicloEnVivo() {
             try {
                 const res = await fetch('/api/analizar');
                 const data = await res.json();
 
-                loading.style.display = 'none';
-
                 if (data.status === 'success') {
                     const opBadge = document.getElementById('op-badge');
+                    const timeVal = document.getElementById('time-val');
+                    const priceVal = document.getElementById('price-val');
+                    const rsiVal = document.getElementById('rsi-val');
+                    const statusText = document.getElementById('status-text');
+                    const verifyingStatus = document.getElementById('verifying-status');
+
+                    timeVal.innerText = data.hora_entrada;
+                    priceVal.innerText = '$' + data.precio_actual;
+                    rsiVal.innerText = data.rsi;
+
+                    // Si cambió de minuto, evaluamos si hay una operación pendiente para cerrar y abrimos una nueva
+                    if (ultimaVelaRegistrada !== data.hora_entrada) {
+                        if (operacionActiva) {
+                            // Validar el resultado real con el precio de cierre oficial de esa vela
+                            verificarResultadoServidor(operacionActiva.precio, data.precio_actual, operacionActiva.tipo, operacionActiva.hora);
+                        }
+
+                        ultimaVelaRegistrada = data.hora_entrada;
+                        operacionActiva = {
+                            precio: parseFloat(data.precio_actual),
+                            tipo: data.tipo_operacion,
+                            hora: data.hora_entrada
+                        };
+                    }
+
                     if (data.direccion.includes('COMPRA')) {
                         opBadge.className = 'operation buy';
                         opBadge.innerText = '🟢 COMPRA (ARRIBA)';
@@ -132,82 +142,41 @@ HTML_PAGE = """
                         opBadge.innerText = '🔴 VENTA (ABAJO)';
                     }
 
-                    document.getElementById('time-val').innerText = data.hora_entrada;
-                    document.getElementById('price-val').innerText = '$' + data.precio_entrada;
-                    document.getElementById('rsi-val').innerText = data.rsi;
-                    document.getElementById('status-text').innerText = 'En curso';
-
-                    signalBox.style.display = 'block';
-
-                    // Iniciar seguimiento exacto hasta el cierre de la vela
-                    monitorearVela(data.precio_entrada, data.tipo_operacion, data.segundos_hasta_cierre, data.hora_entrada);
-                } else {
-                    alert('Error analizando el mercado. Intenta nuevamente.');
+                    statusText.innerText = 'En curso';
+                    statusText.style.color = '#facc15';
+                    verifyingStatus.innerText = `⏳ La vela actual cierra en: ${data.segundos_restantes}s`;
                 }
             } catch (err) {
-                loading.style.display = 'none';
-                alert('Error de conexión con el servidor.');
+                console.error("Error en bucle en vivo:", err);
             }
         }
 
-        function monitorearVela(precioEntrada, tipoOperacion, segundosRestantes, horaEntrada) {
-            const verifyingStatus = document.getElementById('verifying-status');
-            let tiempoRestante = segundosRestantes + 60; // Incluye la vela actual completa + el minuto de la operación
-
-            const timer = setInterval(() => {
-                tiempoRestante--;
-                
-                if (tiempoRestante > 60) {
-                    verifyingStatus.innerText = `⏳ Esperando apertura de vela (${tiempoRestante - 60}s)...`;
-                } else if (tiempoRestante > 0) {
-                    verifyingStatus.innerText = `⏳ Operación abierta. Cierra en: ${tiempoRestante}s`;
-                } else {
-                    clearInterval(timer);
-                    verifyingStatus.innerText = `⌛ Validando precio de cierre oficial...`;
-                    verificarResultadoFinal(precioEntrada, tipoOperacion, horaEntrada);
-                }
-            }, 1000);
-        }
-
-        async function verificarResultadoFinal(precioEntrada, tipoOperacion, horaEntrada) {
+        async function verificarResultadoServidor(precioEntrada, precioCierreActual, tipoOperacion, horaEntrada) {
             try {
-                const res = await fetch(`/api/verificar?precio_entrada=${precioEntrada}&tipo=${tipoOperacion}`);
+                const res = await fetch(`/api/verificar?precio_entrada=${precioEntrada}&precio_cierre=${precioCierreActual}&tipo=${tipoOperacion}`);
                 const data = await res.json();
 
-                const verifyingStatus = document.getElementById('verifying-status');
-                const statusText = document.getElementById('status-text');
                 const historyList = document.getElementById('history-list');
-
-                // Remover mensaje inicial si existe
-                if (historyList.innerHTML.includes('Sin operaciones')) {
+                if (historyList.innerHTML.includes('Esperando')) {
                     historyList.innerHTML = '';
                 }
 
                 const item = document.createElement('div');
-                
-                if (data.status === 'success') {
-                    if (data.ganada) {
-                        verifyingStatus.innerHTML = `<span style="color: #22c55e;">✅ ¡SEÑAL GANADA (ITM)! Cierre: $${data.precio_cierre}</span>`;
-                        statusText.innerText = 'Ganada (ITM)';
-                        statusText.style.color = '#22c55e';
-                        item.className = 'history-item win';
-                        item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #22c55e;">WIN (+$${Math.abs(data.diferencia)})</strong>`;
-                    } else {
-                        verifyingStatus.innerHTML = `<span style="color: #ef4444;">❌ SEÑAL PERDIDA (OTM). Cierre: $${data.precio_cierre}</span>`;
-                        statusText.innerText = 'Perdida (OTM)';
-                        statusText.style.color = '#ef4444';
-                        item.className = 'history-item loss';
-                        item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #ef4444;">LOSS (-$${Math.abs(data.diferencia)})</strong>`;
-                    }
+                if (data.ganada) {
+                    item.className = 'history-item win';
+                    item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #22c55e;">WIN (+$${data.diferencia})</strong>`;
                 } else {
-                    verifyingStatus.innerHTML = `<span style="color: #ef4444;">Error al consultar el cierre.</span>`;
+                    item.className = 'history-item loss';
+                    item.innerHTML = `<span><b>${horaEntrada}</b> | ETH_OTC (${tipoOperacion})</span> <strong style="color: #ef4444;">LOSS (-$${data.diferencia})</strong>`;
                 }
-
                 historyList.prepend(item);
             } catch (e) {
-                console.error(e);
+                console.error("Error verificando resultado:", e);
             }
         }
+
+        // Ejecutar el ciclo automáticamente cada segundo sin necesidad de clics
+        setInterval(cicloEnVivo, 1000);
     </script>
 </body>
 </html>
@@ -254,21 +223,17 @@ async def consultar_datos_mercado():
                         
                         zona_peru = timezone(timedelta(hours=-5))
                         ahora = datetime.now(zona_peru)
-                        
-                        # Segundos exactos que faltan para que termine la vela actual y empiece la siguiente
-                        segundos_hasta_inicio = 60 - ahora.second
-                        
-                        # Hora de la siguiente vela (la de entrada)
-                        hora_entrada = (ahora + timedelta(seconds=segundos_hasta_inicio)).strftime("%I:%M %p")
+                        segundos_restantes = 60 - ahora.second
+                        hora_actual = ahora.strftime("%I:%M %p")
                         
                         return {
                             "status": "success",
-                            "precio_entrada": f"{precio_actual:.2f}",
+                            "precio_actual": f"{precio_actual:.2f}",
                             "rsi": f"{rsi_val:.1f}",
                             "direccion": direccion,
                             "tipo_operacion": tipo_operacion,
-                            "hora_entrada": hora_entrada,
-                            "segundos_hasta_cierre": segundos_hasta_inicio
+                            "hora_entrada": hora_actual,
+                            "segundos_restantes": segundos_restantes
                         }
         except Exception as e:
             print(f"Error: {e}")
@@ -289,30 +254,21 @@ def api_analizar():
 @app.route("/api/verificar")
 def api_verificar():
     precio_entrada = float(request.args.get("precio_entrada", 0))
+    precio_cierre = float(request.args.get("precio_cierre", 0))
     tipo_operacion = request.args.get("tipo", "COMPRA")
     
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    res = loop.run_until_complete(consultar_datos_mercado())
-    loop.close()
+    diferencia = round(abs(precio_cierre - precio_entrada), 2)
     
-    if res.get("status") == "success":
-        precio_cierre = float(res["precio_entrada"])
-        diferencia = round(abs(precio_cierre - precio_entrada), 2)
+    if tipo_operacion == "COMPRA":
+        ganada = precio_cierre > precio_entrada
+    else:
+        ganada = precio_cierre < precio_entrada
         
-        if tipo_operacion == "COMPRA":
-            ganada = precio_cierre > precio_entrada
-        else:
-            ganada = precio_cierre < precio_entrada
-            
-        return jsonify({
-            "status": "success",
-            "ganada": ganada,
-            "precio_cierre": f"{precio_cierre:.2f}",
-            "diferencia": f"{diferencia}"
-        })
-    
-    return jsonify({"status": "error"})
+    return jsonify({
+        "status": "success",
+        "ganada": ganada,
+        "diferencia": f"{diferencia}"
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
