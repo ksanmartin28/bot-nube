@@ -276,4 +276,66 @@ def api_analizar():
     df['ema_fast'] = df['close'].ewm(span=3, adjust=False).mean()
     df['ema_slow'] = df['close'].ewm(span=8, adjust=False).mean()
     
-    rsi_val = df['rsi'].
+    rsi_val = df['rsi'].iloc[-1]
+    ema_f = df['ema_fast'].iloc[-1]
+    ema_s = df['ema_slow'].iloc[-1]
+    impulso = precio_actual - df['close'].iloc[-2]
+    
+    if ema_f > ema_s and rsi_val >= 48 and rsi_val <= 70 and impulso >= 0:
+        direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
+    elif ema_f < ema_s and rsi_val <= 52 and rsi_val >= 30 and impulso <= 0:
+        direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
+    else:
+        if rsi_val < 32:
+            direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
+        elif rsi_val > 68:
+            direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
+        else:
+            if impulso > 0:
+                direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
+            else:
+                direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
+        
+    zona_peru = timezone(timedelta(hours=-5))
+    ahora = datetime.now(zona_peru)
+    segundos_restantes = 60 - ahora.second
+    
+    minuto_actual = ahora.strftime("%Y-%m-%d %H:%M")
+    hora_actual_formato = ahora.strftime("%I:%M %p")
+    siguiente_tiempo = ahora + timedelta(seconds=segundos_restantes)
+    hora_siguiente = siguiente_tiempo.strftime("%I:%M %p")
+    
+    return jsonify({
+        "status": "success",
+        "precio_actual": f"{precio_actual:.{dec}f}",
+        "rsi": f"{rsi_val:.1f}",
+        "direccion": direccion,
+        "tipo_operacion": tipo_operacion,
+        "segundos_restantes": segundos_restantes,
+        "minuto_actual": minuto_actual,
+        "hora_actual_formato": hora_actual_formato,
+        "hora_siguiente": hora_siguiente
+    })
+
+@app.route("/api/verificar")
+def api_verificar():
+    precio_apertura = float(request.args.get("precio_apertura", 0))
+    precio_cierre = float(request.args.get("precio_cierre", 0))
+    tipo_operacion = request.args.get("tipo", "COMPRA")
+    
+    diferencia = round(abs(precio_cierre - precio_apertura), 4)
+    
+    if tipo_operacion == "COMPRA":
+        ganada = precio_cierre > precio_apertura
+    else:
+        ganada = precio_cierre < precio_apertura
+        
+    return jsonify({
+        "status": "success",
+        "ganada": ganada,
+        "diferencia": f"{diferencia}"
+    })
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
