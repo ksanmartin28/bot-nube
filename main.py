@@ -120,7 +120,6 @@ HTML_PAGE = """
                     const statusText = document.getElementById('status-text');
                     const verifyingStatus = document.getElementById('verifying-status');
 
-                    // Alerta exacta a los 5 segundos antes de cambiar de vela
                     if (segundosRestantes <= 5 && segundosRestantes >= 0) {
                         if (ultimoMinutoProcesado !== minutoActual) {
                             ultimoMinutoProcesado = minutoActual;
@@ -157,7 +156,6 @@ HTML_PAGE = """
                         }
                     }
 
-                    // Validar resultado exacto al cambiar de minuto
                     if (operacionActiva && operacionActiva.hora !== data.hora_actual_formato && segundosRestantes >= 55) {
                         validarResultadoFinal(operacionActiva.precioApertura, parseFloat(data.precio_actual), operacionActiva.tipo, operacionActiva.hora);
                         operacionActiva = null;
@@ -198,7 +196,6 @@ HTML_PAGE = """
 </html>
 """
 
-# Almacén de precios históricos recientes para el cálculo estricto
 precios_historicos_otc = [2400.0 + (i * 0.15) for i in range(40)]
 
 def calcular_rsi(df, periodo=14):
@@ -211,7 +208,6 @@ def calcular_rsi(df, periodo=14):
 async def obtener_analisis_preciso():
     global precios_historicos_otc
     
-    # Simulación de fluctuación real de ticks del activo OTC
     ultimo = precios_historicos_otc[-1]
     variacion = random.uniform(-0.40, 0.40)
     nuevo_precio = round(ultimo + variacion, 2)
@@ -230,13 +226,11 @@ async def obtener_analisis_preciso():
     ema_f = df['ema_fast'].iloc[-1]
     ema_s = df['ema_slow'].iloc[-1]
     
-    # Criterio estricto de alta precisión: Cruce de EMAs + RSI fuera de zona neutral (evita falsas señales)
     if ema_f > ema_s and rsi_val > 52:
         direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
     elif ema_f < ema_s and rsi_val < 48:
         direccion, tipo_operacion = "🔴 VENTA (ABAJO)", "VENTA"
     else:
-        # Filtro de confirmación por acción de precio si hay neutralidad en indicadores
         if precio_actual >= df['close'].iloc[-2]:
             direccion, tipo_operacion = "🟢 COMPRA (ARRIBA)", "COMPRA"
         else:
